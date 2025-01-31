@@ -1,0 +1,30 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: parking-frontend
+  namespace: parking-system
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: parking-frontend
+  template:
+    metadata:
+      labels:
+        app: parking-frontend
+    spec:
+      containers:
+      - name: parking-frontend
+        image: ${ECR_REGISTRY}/parking-frontend:${IMAGE_TAG}
+        ports:
+        - containerPort: 80
+        env:
+        - name: REACT_APP_API_URL
+          value: "http://parking-backend:8000"
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
