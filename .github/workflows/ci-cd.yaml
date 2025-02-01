@@ -1,16 +1,10 @@
-# .github/workflows/ci-cd.yaml
-name: CI/CD Pipeline
+name: CI/CD PoC Pipeline
 
 on:
   push:
     branches: [ main ]
   pull_request:
     branches: [ main ]
-
-env:
-  AWS_REGION: us-west-2
-  EKS_CLUSTER_NAME: parking-cluster
-  ECR_REGISTRY: ${{ secrets.ECR_REGISTRY }}
 
 jobs:
   test:
@@ -52,63 +46,10 @@ jobs:
     - name: Upload coverage reports
       uses: codecov/codecov-action@v3
 
-  build-and-push:
+  build:
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
     steps:
     - uses: actions/checkout@v3
 
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
-
-    - name: Login to Amazon ECR
-      uses: aws-actions/amazon-ecr-login@v1
-
-    - name: Build and push backend image
-      env:
-        IMAGE_TAG: ${{ github.sha }}
-      run: |
-        cd backend
-        docker build -t $ECR_REGISTRY/parking-backend:$IMAGE_TAG .
-        docker push $ECR_REGISTRY/parking-backend:$IMAGE_TAG
-
-    - name: Build and push frontend image
-      env:
-        IMAGE_TAG: ${{ github.sha }}
-      run: |
-        cd frontend
-        docker build -t $ECR_REGISTRY/parking-frontend:$IMAGE_TAG .
-        docker push $ECR_REGISTRY/parking-frontend:$IMAGE_TAG
-
-  deploy:
-    needs: build-and-push
-    runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
-    steps:
-    - uses: actions/checkout@v3
-
-    - name: Configure AWS credentials
-      uses: aws-actions/configure-aws-credentials@v2
-      with:
-        aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-        aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-        aws-region: ${{ env.AWS_REGION }}
-
-    - name: Update kube config
-      run: aws eks update-kubeconfig --name $EKS_CLUSTER_NAME --region $AWS_REGION
-
-    - name: Deploy to EKS
-      env:
-        IMAGE_TAG: ${{ github.sha }}
-      run: |
-        # Update image tags in Kubernetes manifests
-        sed -i "s|\${ECR_REGISTRY}|$ECR_REGISTRY|g" kubernetes/*.yaml
-        sed -i "s|\${IMAGE_TAG}|$IMAGE_TAG|g" kubernetes/*.yaml
-        
-        # Apply Kubernetes manifests
-        kubectl apply -f kubernetes/
+    - name
