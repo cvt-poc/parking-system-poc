@@ -15,10 +15,6 @@ module "vpc" {
   enable_nat_gateway = true
   single_nat_gateway = true
 
-  tags = {
-    Environment = var.environment
-    Project     = "parking-system"
-  }
 }
 
 module "eks" {
@@ -73,4 +69,72 @@ module "ecr" {
     Environment = var.environment
     Project     = "parking-system"
   }
+}
+
+module "db" {
+  source = "terraform-aws-modules/rds/aws"
+
+  identifier = "parking-db"
+  engine = "postgres"
+  engine_version = "13.3"
+  instance_class = "db.t3.micro"
+  allocated_storage = 20
+  db_name = "parking_db"
+  username = "postgres"
+  password = "yourpassword"
+  vpc_security_group_ids = [module.vpc.default_security_group_id]
+  db_subnet_group_name = module.vpc.database_subnet_group
+  multi_az = false
+  publicly_accessible = false
+
+  tags = {
+    Environment = var.environment
+    Project     = "parking-system"
+  }
+}
+
+module "eks_iam" {
+  source = "terraform-aws-modules/iam/aws//modules/eks"
+  
+
+}
+
+resource "aws_s3_bucket" "frontend_bucket" {
+  bucket = "parking-system-frontend-${var.environment}"
+  grant {
+    type        = "CanonicalUser"
+    permissions = ["FULL_CONTROL"]
+    id          = "your-canonical-user-id"
+  }
+
+  tags = {
+    Environment = var.environment
+    Project     = "parking-system"
+  }
+}
+
+module "alb" {
+  source = "terraform-aws-modules/alb/aws"
+
+  name = "parking-alb"
+  load_balancer_type = "application"
+  vpc_id = module.vpc.vpc_id
+  subnets = module.vpc.public_subnets
+
+  tags = {
+    Environment = var.environment
+    Project     = "parking-system"
+  }
+}
+
+resource "aws_route53_record" "frontend" {
+  zone_id = "your_zone_id"
+  name    = "parking.yourdomain.com"
+  type    = "A"
+
+  alias {
+    name                   = module.alb.dns_name
+    zone_id                = module.alb.zone_id
+    evaluate_target_health = true
+  }    
 }
