@@ -29,10 +29,21 @@ jobs:
         docker run -d --name backend -p 5000:5000 parking-backend:latest
         docker ps  # Check if backend container is running
 
+    - name: Test backend API
+      run: |
+        curl http://localhost:5000/api/parking/current  # Replace with your actual backend health check URL
+        echo "Backend API response logged!"
+
     - name: Run frontend container
       run: |
         docker run -d --name frontend -p 3000:3000 parking-frontend:latest
         docker ps  # Check if frontend container is running
+    
+    - name: Test frontend accessibility
+      run: |
+        curl http://localhost:3000  # Replace with your actual frontend URL
+        echo "Frontend accessibility logged!"
 
+    
     - name: Display success message
       run: echo "Containers are running! Backend on port 5000, Frontend on port 3000"
