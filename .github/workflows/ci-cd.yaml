@@ -1,4 +1,4 @@
-name: CI/CD PoC Pipeline
+name: CI/CD Pipeline
 
 on:
   push:
@@ -7,27 +7,60 @@ on:
     branches: [ main ]
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install backend dependencies
+      run: |
+        cd backend
+        pip install -r requirements.txt
+        pip install pytest pytest-cov
+
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+
+    - name: Install frontend dependencies
+      run: |
+        cd frontend
+        npm install
+
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
+    - uses: actions/checkout@v3
 
-      - name: Build backend Docker image
-        run: |
-          cd backend
-          docker build -t parking-backend:latest .
+    # Build Backend Docker Image
+    - name: Build backend Docker image
+      run: |
+        cd backend
+        docker build -t parking-backend:latest .
 
-      - name: Build frontend Docker image
-        run: |
-          cd frontend
-          docker build -t parking-frontend:latest .
+    # Build Frontend Docker Image
+    - name: Build frontend Docker image
+      run: |
+        cd frontend
+        docker build -t parking-frontend:latest .
 
-  simulate-deploy:
+  deploy:
     needs: build
     runs-on: ubuntu-latest
     steps:
-      - name: Run backend and frontend containers
-        run: |
-          docker run -d --name backend -p 5000:5000 parking-backend:latest
-          docker run -d --name frontend -p 3000:3000 parking-frontend:latest
-          echo "Containers are running! Backend on port 5000, Frontend on port 3000"
+    - name: Run backend container
+      run: |
+        docker run -d --name backend -p 5000:5000 parking-backend:latest
+
+    - name: Run frontend container
+      run: |
+        docker run -d --name frontend -p 3000:3000 parking-frontend:latest
+
+    - name: Display success message
+      run: echo "Containers are running! Backend on port 5000, Frontend on port 3000"
