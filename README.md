@@ -1,3 +1,5 @@
+![Alt text](images/screenshot.png)
+
 # Parking System - DevOps Demonstration Project
 
 ## Overview
