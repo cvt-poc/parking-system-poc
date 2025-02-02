@@ -1,0 +1,231 @@
+# ConfigMap for environment variables
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: parking-config
+  namespace: parking-system
+data:
+  POSTGRES_DB: parking_db
+  POSTGRES_HOST: postgres
+  DATABASE_URL: postgresql://postgres:postgres@postgres:5432/parking_db
+
+---
+# Secret for database credentials
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgres-secret
+  namespace: parking-system
+type: Opaque
+data:
+  # Note: These are base64 encoded values of "postgres"
+  POSTGRES_USER: cG9zdGdyZXM=
+  POSTGRES_PASSWORD: cG9zdGdyZXM=
+
+---
+# Persistent Volume Claim for PostgreSQL
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-pvc
+  namespace: parking-system
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+
+---
+# PostgreSQL Deployment
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: postgres
+  namespace: parking-system
+spec:
+  serviceName: postgres
+  replicas: 1
+  selector:
+    matchLabels:
+      app: postgres
+  template:
+    metadata:
+      labels:
+        app: postgres
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:13
+          ports:
+            - containerPort: 5432
+          envFrom:
+            - configMapRef:
+                name: parking-config
+            - secretRef:
+                name: postgres-secret
+          volumeMounts:
+            - name: postgres-storage
+              mountPath: /var/lib/postgresql/data
+          readinessProbe:
+            exec:
+              command: ["pg_isready", "-U", "postgres"]
+            initialDelaySeconds: 5
+            periodSeconds: 5
+      volumes:
+        - name: postgres-storage
+          persistentVolumeClaim:
+            claimName: postgres-pvc
+
+---
+# PostgreSQL Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: parking-system
+spec:
+  ports:
+    - port: 5432
+  selector:
+    app: postgres
+
+---
+# Backend Deployment
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: parking-system
+data:
+  POSTGRES_HOST: "postgres"  # This should match your PostgreSQL service name
+  POSTGRES_DB: "parking_db"
+  DATABASE_URL: "postgresql://postgres:postgres@postgres:5432/parking_db"
+
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: database-init
+  namespace: parking-system
+spec:
+  template:
+    metadata:
+      labels:
+        app: database-init
+    spec:
+      containers:
+      - name: database-init
+        image: parking-backend:latest
+        imagePullPolicy: Never
+        command: ["/bin/bash", "-c"]
+        args:
+        - |
+          while ! nc -z postgres 5432; do
+            echo "Waiting for postgres..."
+            sleep 1
+          done
+          echo "Running migrations..."
+          alembic upgrade head
+          echo "Seeding initial data..."
+          python seed_data.py
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://postgres:postgres@postgres:5432/parking_db"
+        - name: POSTGRES_HOST
+          value: "postgres"
+      restartPolicy: OnFailure
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: parking-backend
+  namespace: parking-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: parking-backend
+  template:
+    metadata:
+      labels:
+        app: parking-backend
+    spec:
+      initContainers:
+        - name: wait-for-db
+          image: busybox
+          command: ['sh', '-c', 'until nc -z postgres 5432; do echo waiting for postgres; sleep 2; done;']
+      containers:
+      - name: parking-backend
+        image: parking-backend:latest
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 8000
+        env:
+        - name: DATABASE_URL
+          value: "postgresql://postgres:postgres@postgres:5432/parking_db"
+        - name: POSTGRES_HOST
+          value: "postgres"
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          value: "postgres"
+        - name: POSTGRES_DB
+          value: "parking_db"
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+---
+# Backend Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: parking-backend
+  namespace: parking-system
+spec:
+  type: ClusterIP
+  ports:
+    - port: 8000
+      targetPort: 8000
+  selector:
+    app: parking-backend
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: parking-frontend
+  namespace: parking-system
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: parking-frontend
+  template:
+    metadata:
+      labels:
+        app: parking-frontend
+    spec:
+      containers:
+      - name: frontend
+        image: parking-frontend 
+        imagePullPolicy: Never
+        ports:
+        - containerPort: 80
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: parking-frontend
+  namespace: parking-system
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: 80
+  selector:
+    app: parking-frontend
